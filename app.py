@@ -5,8 +5,9 @@ from datetime import datetime, timedelta
 import time
 import plotly.express as px
 
-DB_NAME = "vocab_vault_v2.db"
+DB_NAME = "vocab_vault_v3.db"
 
+# --- DATABASE LOGIC ---
 def init_db():
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
@@ -23,7 +24,13 @@ def init_db():
                   next_review TEXT,
                   mastery_score INTEGER DEFAULT 0)''')
     
-    # เช็คและเพิ่มข้อมูลเริ่มต้น
+    # ตรวจสอบการเพิ่มคอลัมน์ใหม่ (Migration)
+    c.execute("PRAGMA table_info(vocab)")
+    cols = [column[1] for column in c.fetchall()]
+    if 'pos' not in cols: c.execute("ALTER TABLE vocab ADD COLUMN pos TEXT")
+    if 'example' not in cols: c.execute("ALTER TABLE vocab ADD COLUMN example TEXT")
+
+    # ใส่ข้อมูลเริ่มต้นถ้าฐานข้อมูลว่างเปล่า
     c.execute("SELECT COUNT(*) FROM vocab")
     if c.fetchone()[0] == 0:
         initial_words = [
@@ -54,7 +61,7 @@ def update_srs(word_id, success):
         new_easiness = easiness + 0.1
         new_mastery = min(100, mastery + 15)
     else:
-        new_interval = 0 # กลับมาฝึกใหม่ทันทีหรือพรุ่งนี้
+        new_interval = 0 
         new_easiness = max(1.3, easiness - 0.2)
         new_mastery = max(0, mastery - 20)
         
@@ -64,6 +71,7 @@ def update_srs(word_id, success):
     conn.commit()
     conn.close()
 
+# --- UI STYLING ---
 st.set_page_config(page_title="Typist Lexicon Pro", layout="wide", initial_sidebar_state="collapsed")
 
 st.markdown("""
@@ -100,9 +108,10 @@ st.markdown("""
         border-radius: 10px;
         font-weight: 600;
         margin-bottom: 15px;
+        font-size: 0.9rem;
     }
 
-    .level-tag { color: #94A3B8; font-size: 0.9rem; margin-bottom: 10px; }
+    .level-tag { color: #94A3B8; font-size: 0.9rem; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px; }
     .trans-main { font-size: 1.8rem; color: #E2E8F0; margin-bottom: 30px; }
     
     .example-box {
@@ -133,6 +142,18 @@ st.markdown("""
         box-shadow: 0 0 20px rgba(96, 165, 250, 0.2) !important;
     }
     </style>
+
+    <script>
+    // ดักจับและสั่งปิด autocomplete ทุกๆ 1 วินาที เพื่อให้ครอบคลุมการ render ใหม่ของ Streamlit
+    setInterval(function() {
+        var inputs = window.parent.document.querySelectorAll('input');
+        for (var i = 0; i < inputs.length; i++) {
+            inputs[i].setAttribute('autocomplete', 'off');
+            inputs[i].setAttribute('autocorrect', 'off');
+            inputs[i].setAttribute('spellcheck', 'false');
+        }
+    }, 1000);
+    </script>
 """, unsafe_allow_html=True)
 
 def main():
@@ -143,7 +164,7 @@ def main():
     with tabs[0]:
         conn = sqlite3.connect(DB_NAME)
         today = datetime.now().strftime('%Y-%m-%d')
-        # ดึงคำที่ถึงกำหนด หรือคำที่ยังไม่เคยเรียน
+        # ดึงคำที่ถึงกำหนดทบทวน หรือคำใหม่
         df_due = pd.read_sql_query("SELECT * FROM vocab WHERE next_review <= ? OR interval = 0 ORDER BY interval DESC", conn, params=(today,))
         conn.close()
 
@@ -159,7 +180,8 @@ def main():
                 </div>
             """, unsafe_allow_html=True)
             
-            input_key = f"q_{target['id']}"
+            # ใช้ dynamic key ร่วมกับ timestamp เพื่อกันบราว์เซอร์จำฟิลด์เดิม
+            input_key = f"q_{target['id']}_{time.time()}"
             user_input = st.text_input("Type the word correctly to continue", key=input_key, placeholder="...")
 
             if user_input:
