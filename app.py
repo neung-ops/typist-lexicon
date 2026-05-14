@@ -11,7 +11,6 @@ DB_NAME = "vocab_vault_v3.db"
 def init_db():
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
-    # ตารางหลักสำหรับเก็บคำศัพท์และสถิติการเรียนรู้
     c.execute('''CREATE TABLE IF NOT EXISTS vocab 
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, 
                   word TEXT UNIQUE, 
@@ -24,13 +23,11 @@ def init_db():
                   next_review TEXT,
                   mastery_score INTEGER DEFAULT 0)''')
     
-    # ตรวจสอบการเพิ่มคอลัมน์ใหม่ (Migration)
     c.execute("PRAGMA table_info(vocab)")
     cols = [column[1] for column in c.fetchall()]
     if 'pos' not in cols: c.execute("ALTER TABLE vocab ADD COLUMN pos TEXT")
     if 'example' not in cols: c.execute("ALTER TABLE vocab ADD COLUMN example TEXT")
 
-    # ใส่ข้อมูลเริ่มต้นถ้าฐานข้อมูลว่างเปล่า
     c.execute("SELECT COUNT(*) FROM vocab")
     if c.fetchone()[0] == 0:
         initial_words = [
@@ -144,7 +141,6 @@ st.markdown("""
     </style>
 
     <script>
-    // ดักจับและสั่งปิด autocomplete ทุกๆ 1 วินาที เพื่อให้ครอบคลุมการ render ใหม่ของ Streamlit
     setInterval(function() {
         var inputs = window.parent.document.querySelectorAll('input');
         for (var i = 0; i < inputs.length; i++) {
@@ -164,7 +160,6 @@ def main():
     with tabs[0]:
         conn = sqlite3.connect(DB_NAME)
         today = datetime.now().strftime('%Y-%m-%d')
-        # ดึงคำที่ถึงกำหนดทบทวน หรือคำใหม่
         df_due = pd.read_sql_query("SELECT * FROM vocab WHERE next_review <= ? OR interval = 0 ORDER BY interval DESC", conn, params=(today,))
         conn.close()
 
@@ -180,23 +175,25 @@ def main():
                 </div>
             """, unsafe_allow_html=True)
             
-            # ใช้ dynamic key ร่วมกับ timestamp เพื่อกันบราว์เซอร์จำฟิลด์เดิม
             input_key = f"q_{target['id']}_{time.time()}"
             user_input = st.text_input("Type the word correctly to continue", key=input_key, placeholder="...")
 
             if user_input:
                 if user_input.strip().lower() == target['word'].lower():
+                    # --- CELEBRATION AREA ---
+                    st.balloons() # เอากลับมาตรงนี้แล้ว!
+                    st.toast(f"🎯 Perfect! {target['word']}", icon="✅")
+                    
                     update_srs(target['id'], True)
-                    st.toast(f"🎯 Perfect! Mastery: {target['word']}", icon="✅")
-                    time.sleep(0.5)
+                    time.sleep(1.2) # รอให้น้องลอยขึ้นมาให้เห็นชัดๆ
                     st.rerun()
                 else:
                     if len(user_input) >= len(target['word']):
                         st.error("Keep trying! Focus on each letter.")
                         update_srs(target['id'], False)
         else:
-            st.balloons()
-            st.markdown("<div style='text-align:center; padding:50px;'><h1>🌈 All Done!</h1><p>You've cleared your list for today.</p></div>", unsafe_allow_html=True)
+            st.success("You've cleared your list for today! Try adding new words in the Vault.")
+            st.markdown("<div style='text-align:center; padding:50px;'><h1>🌈 All Done!</h1></div>", unsafe_allow_html=True)
 
     with tabs[1]:
         st.header("Learning Analytics")
@@ -214,8 +211,6 @@ def main():
                          title="Mastery Level by Word", color_continuous_scale="Viridis")
             fig.update_layout(template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
             st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info("Start practicing to see your statistics!")
 
     with tabs[2]:
         st.header("Vault Management")
