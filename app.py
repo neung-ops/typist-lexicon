@@ -4,10 +4,29 @@ import sqlite3
 from datetime import datetime, timedelta
 import time
 import random
-import plotly.express as px
-
-# --- STREAMING_CHUNK:Configuring Database with Oxford Starter Kit... ---
-DB_NAME = "vocab_pro_v5.db"
+# --- STREAMING_CHUNK:Expanding Library with Advanced Vocabulary... ---
+OXFORD_EXPANSION = [
+    ('Ambiguous', 'adj.', '/æmˈbɪɡ.ju.əs/', 'กำกวม/ไม่ชัดเจน', 'His reply to my question was somewhat ambiguous.', 'B2'),
+    ('Coherent', 'adj.', '/koʊˈhɪr.ənt/', 'สอดคล้องกัน/เชื่อมโยงกัน', 'The government lacks a coherent economic policy.', 'B2'),
+    ('Deteriorate', 'v.', '/dɪˈtɪr.i.ə.reɪt/', 'เสื่อมโทรมลง/แย่ลง', 'The weather conditions are expected to deteriorate.', 'C1'),
+    ('Exacerbate', 'v.', '/ɪɡˈzæs.ɚ.beɪt/', 'ทำให้แย่ลง/ซ้ำเติม', 'This attack will exacerbate the already tense relations.', 'C1'),
+    ('Fluctuate', 'v.', '/ˈflʌk.tʃu.eɪt/', 'ผันผวน/ขึ้นๆ ลงๆ', 'Vegetable prices fluctuate according to the season.', 'B2'),
+    ('Hypothesis', 'n.', '/haɪˈpɑː.θə.sɪs/', 'สมมติฐาน', 'The results confirm the initial hypothesis.', 'B2'),
+    ('Inevitable', 'adj.', '/ɪˈnev.ə.t̬ə.bəl/', 'หลีกเลี่ยงไม่ได้', 'The accident was the inevitable outcome of carelessness.', 'B2'),
+    ('Justify', 'v.', '/ˈdʒʌs.tə.faɪ/', 'ให้เหตุผลรองรับ/พิสูจน์ว่าถูก', 'I can\'t justify taking another day off work.', 'B2'),
+    ('Legitimate', 'adj.', '/ləˈdʒɪt̬.ə.mət/', 'ชอบธรรม/ถูกต้องตามกฎหมาย', 'He has a legitimate claim to the property.', 'B2'),
+    ('Mitigate', 'v.', '/ˈmɪt̬.ə.ɡeɪt/', 'บรรเทาลง/ทำให้เบาลง', 'It is unclear how to mitigate the effects of tourism.', 'C1'),
+    ('Paradigm', 'n.', '/ˈper.ə.daɪm/', 'แบบอย่าง/กรอบแนวคิด', 'The bus project is a new paradigm for public transport.', 'C1'),
+    ('Resilient', 'adj.', '/rɪˈzɪl.jənt/', 'ยืดหยุ่น/คืนสภาพได้เร็ว', 'The community is highly resilient to economic change.', 'B2'),
+    ('Scrutinize', 'v.', '/ˈskruː.t̬ən.aɪz/', 'พินิจพิจารณาอย่างละเอียด', 'Her performance was scrutinized by the judges.', 'C1'),
+    ('Substantial', 'adj.', '/səbˈstæn.ʃəl/', 'มากมาย/สำคัญ', 'The findings show a substantial difference between groups.', 'B2'),
+    ('Unprecedented', 'adj.', '/ʌnˈpres.ə.den.t̬ɪd/', 'ไม่เคยเกิดขึ้นมาก่อน', 'The scale of the disaster is unprecedented.', 'C1'),
+    ('Pragmatic', 'adj.', '/præɡˈmæt̬.ɪk/', 'เน้นผลจริง/ในทางปฏิบัติ', 'We need a pragmatic approach to this problem.', 'C1'),
+    ('Elaborate', 'v.', '/iˈlæb.ə.reɪt/', 'ขยายความ/ทำอย่างละเอียด', 'Could you elaborate on your main point?', 'B2'),
+    ('Conspicuous', 'adj.', '/kənˈspɪk.ju.əs/', 'เด่นชัด/สะดุดตา', 'He was conspicuous by his absence.', 'C1'),
+    ('Advocate', 'v.', '/ˈæd.və.keɪt/', 'สนับสนุน/เป็นกระบอกเสียง', 'She advocates for higher taxes on the wealthy.', 'B2'),
+    ('Ambivalent', 'adj.', '/æmˈbɪv.ə.lənt/', 'มีความรู้สึกสองจิตสองใจ', 'I am ambivalent about my new job.', 'C1')
+]
 
 if 'session_queue' not in st.session_state:
     st.session_state.session_queue = [] 
@@ -32,37 +51,18 @@ def init_db():
     c.execute("SELECT COUNT(*) FROM vocab")
     if c.fetchone()[0] < 5:
         now = datetime.now().strftime('%Y-%m-%d')
-        # ชุดคำศัพท์เริ่มต้น (Starter Kit) ระดับ B1-C1
         starters = [
             ('Analyze', 'v.', '/ˈæn.əl.aɪz/', 'วิเคราะห์', 'We need to analyze the data carefully.', 'B1', 0, 2.5, now),
             ('Comprehensive', 'adj.', '/ˌkɒm.prɪˈhen.sɪv/', 'ครอบคลุม', 'A comprehensive list of words.', 'C1', 0, 2.5, now),
             ('Implement', 'v.', '/ˈɪm.plɪ.ment/', 'นำมาใช้', 'Let\'s implement the new plan.', 'B2', 0, 2.5, now),
             ('Consistent', 'adj.', '/kənˈsɪs.tənt/', 'สม่ำเสมอ', 'Her work is very consistent.', 'B2', 0, 2.5, now),
-            ('Acquire', 'v.', '/əˈkwaɪər/', 'ได้รับมา', 'He managed to acquire new skills.', 'B2', 0, 2.5, now),
-            ('Elaborate', 'adj.', '/iˈlæb.ər.ət/', 'ซับซ้อน/ละเอียด', 'They made elaborate preparations.', 'C1', 0, 2.5, now),
-            ('Sufficient', 'adj.', '/səˈfɪʃ.ənt/', 'เพียงพอ', 'We have sufficient resources.', 'B1', 0, 2.5, now),
-            ('Substantial', 'adj.', '/səbˈstæn.ʃəl/', 'มากมาย/สำคัญ', 'A substantial amount of money.', 'B2', 0, 2.5, now),
-            ('Advocate', 'v.', '/ˈæd.və.keɪt/', 'สนับสนุน', 'She advocates for human rights.', 'C1', 0, 2.5, now),
-            ('Constraint', 'n.', '/kənˈstreɪnt/', 'ข้อจำกัด', 'Financial constraints limited the project.', 'C1', 0, 2.5, now)
+            ('Acquire', 'v.', '/əˈkwaɪər/', 'ได้รับมา', 'He managed to acquire new skills.', 'B2', 0, 2.5, now)
         ]
         c.executemany("INSERT OR IGNORE INTO vocab (word, pos, pronunciation, translation, example, level, interval, easiness, next_review) VALUES (?,?,?,?,?,?,?,?,?)", starters)
     conn.commit()
     conn.close()
 
-# --- STREAMING_CHUNK:Defining Smart Distractors and SRS Logic... ---
-def get_distractors(correct_answer):
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute("SELECT translation FROM vocab WHERE translation != ? ORDER BY RANDOM() LIMIT 3", (correct_answer,))
-    others = [row[0] for row in c.fetchall()]
-    conn.close()
-    # ถ้าคำศัพท์ไม่พอ ให้ใช้คำหลอกแบบสุ่มที่เป็นคำทั่วไป
-    fallbacks = ["ความพยายาม", "การเรียนรู้", "ความท้าทาย", "ความสำเร็จ", "การพัฒนา"]
-    while len(others) < 3:
-        f = random.choice(fallbacks)
-        if f not in others: others.append(f)
-    return others
-
+# --- STREAMING_CHUNK:Handling SRS and Word Management... ---
 def update_srs(word_id, success):
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
@@ -86,8 +86,20 @@ def update_srs(word_id, success):
     conn.commit()
     conn.close()
 
-# --- STREAMING_CHUNK:Injecting High-Performance Focus & Anti-Cheat Script... ---
-st.set_page_config(page_title="Typist Lexicon Pro", layout="wide")
+def get_distractors(correct_answer):
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("SELECT translation FROM vocab WHERE translation != ? ORDER BY RANDOM() LIMIT 3", (correct_answer,))
+    others = [row[0] for row in c.fetchall()]
+    conn.close()
+    fallbacks = ["ความพยายาม", "การเรียนรู้", "ความท้าทาย", "ความสำเร็จ", "การพัฒนา"]
+    while len(others) < 3:
+        f = random.choice(fallbacks)
+        if f not in others: others.append(f)
+    return others
+
+# --- STREAMING_CHUNK:Injecting High-Performance Focus & Modern Styles... ---
+st.set_page_config(page_title="Typist Lexicon Pro v6", layout="wide")
 
 st.markdown("""
     <style>
@@ -125,10 +137,9 @@ st.markdown("""
         width: 100%;
         border-radius: 15px;
         transition: all 0.2s ease;
-        margin-top: 10px;
     }
     div.stButton > button:hover {
-        background: #334155 !important;
+        background: #3B82F6 !important;
         border-color: #60A5FA !important;
         transform: translateY(-2px);
     }
@@ -136,18 +147,15 @@ st.markdown("""
 
     <script>
     function forceFocus() {
-        // หา Input ทั้งหมดและเลือกตัวล่าสุดที่โผล่มา
         const inputs = window.parent.document.querySelectorAll('input');
         if (inputs.length > 0) {
             const currentInput = inputs[inputs.length - 1];
             currentInput.setAttribute('autocomplete', 'off');
-            currentInput.setAttribute('autofocus', 'true');
             if (window.parent.document.activeElement !== currentInput) {
                 currentInput.focus();
             }
         }
     }
-    // สั่งรันทุกครึ่งวินาทีเพื่อให้แน่ใจว่าโฟกัสไม่หลุด
     setInterval(forceFocus, 500);
     </script>
 """, unsafe_allow_html=True)
@@ -155,7 +163,7 @@ st.markdown("""
 # --- STREAMING_CHUNK:App Main Logic (Typing -> Quiz)... ---
 def main():
     init_db()
-    st.title("⌨️ Typist Lexicon Pro v5")
+    st.title("⌨️ Typist Lexicon Pro v6")
 
     if st.session_state.quiz_phase:
         # --- PHASE 2: QUIZ ---
@@ -196,7 +204,7 @@ def main():
                         else:
                             st.rerun()
                     else:
-                        st.error("Wrong Meaning! Retrying the session...")
+                        st.error("Wrong Meaning! Retrying...")
                         update_srs(current_word_data['id'], False)
                         st.session_state.quiz_phase = False
                         st.session_state.session_queue = []
@@ -204,7 +212,7 @@ def main():
                         time.sleep(1.5)
                         st.rerun()
     else:
-        # --- PHASE 1: TYPING ---
+        # --- PHASE 1: TRAINING ---
         tabs = st.tabs(["🚀 Training Ground", "📊 Analytics", "📂 Word Vault"])
         
         with tabs[0]:
@@ -212,7 +220,6 @@ def main():
             today = datetime.now().strftime('%Y-%m-%d')
             finished_ids = [str(w['id']) for w in st.session_state.session_queue]
             
-            # ดึงคำที่ถึงกำหนด (SRS)
             query = f"SELECT * FROM vocab WHERE next_review <= ?"
             if finished_ids:
                 query += f" AND id NOT IN ({','.join(finished_ids)})"
@@ -233,9 +240,8 @@ def main():
                     </div>
                 """, unsafe_allow_html=True)
                 
-                # Dynamic key to reset input and JavaScript will handle focus
                 input_key = f"type_box_{target['id']}_{st.session_state.input_focus_trigger}"
-                typed_word = st.text_input("Type the word correctly:", key=input_key, placeholder="Type and hit Enter...").strip()
+                typed_word = st.text_input("Type correctly:", key=input_key, placeholder="Type and hit Enter...").strip()
 
                 if typed_word:
                     if typed_word.lower() == target['word'].lower():
@@ -248,72 +254,62 @@ def main():
                         st.rerun()
                     else:
                         if len(typed_word) >= len(target['word']):
-                            st.error("Typos detected! Focus on each letter.")
+                            st.error("Typos! Concentrate on each letter.")
             else:
-                # กรณีคำในคิวหมด
                 if st.session_state.session_queue:
                     st.session_state.quiz_phase = True
                     st.rerun()
                 else:
                     st.success("🎯 All daily tasks completed!")
-                    if st.button("🔥 Start Infinite Review Mode"):
-                        # สุ่มคำจาก DB ทั้งหมดมาฝึกใหม่
-                        conn = sqlite3.connect(DB_NAME)
-                        c = conn.cursor()
-                        c.execute("UPDATE vocab SET next_review = ?", (datetime.now().strftime('%Y-%m-%d'),))
-                        conn.commit()
-                        conn.close()
-                        st.rerun()
-
-        with tabs[1]:
-            # --- ANALYTICS TAB ---
-            st.header("Learning Performance")
-            conn = sqlite3.connect(DB_NAME)
-            df_stats = pd.read_sql_query("SELECT level, mastery_score, word FROM vocab", conn)
-            conn.close()
-            
-            if not df_stats.empty:
-                c1, c2 = st.columns([1, 2])
-                with c1:
-                    fig_pie = px.pie(df_stats, names='level', title='Vocab Distribution', hole=0.4, color_discrete_sequence=px.colors.sequential.Agsunset)
-                    st.plotly_chart(fig_pie, use_container_width=True)
-                with c2:
-                    st.subheader("Mastery Heatmap")
-                    fig_bar = px.bar(df_stats, x='word', y='mastery_score', color='mastery_score', color_continuous_scale='Viridis')
-                    st.plotly_chart(fig_bar, use_container_width=True)
-            else:
-                st.info("No data yet. Start training!")
-
-        with tabs[2]:
-            # --- WORD VAULT TAB ---
-            st.header("Dictionary Management")
-            with st.expander("➕ Add Custom Word to Vault"):
-                with st.form("add_word", clear_on_submit=True):
-                    c1, c2, c3 = st.columns(3)
-                    w = c1.text_input("Word")
-                    pos = c2.selectbox("POS", ["n.", "v.", "adj.", "adv.", "phr."])
-                    phonetic = c3.text_input("IPA (e.g. /.../)")
-                    t = st.text_input("Thai Translation")
-                    e = st.text_area("Usage Example")
-                    l = st.select_slider("CEFR", ["A1", "A2", "B1", "B2", "C1", "C2"], value="B1")
-                    if st.form_submit_button("Save to Dictionary"):
-                        if w and t:
+                    c1, c2 = st.columns(2)
+                    with c1:
+                        if st.button("🔥 Start Infinite Review"):
                             conn = sqlite3.connect(DB_NAME)
                             c = conn.cursor()
-                            try:
-                                c.execute("INSERT INTO vocab (word, pos, pronunciation, translation, example, level, next_review) VALUES (?,?,?,?,?,?,?)",
-                                          (w, pos, phonetic, t, e, l, datetime.now().strftime('%Y-%m-%d')))
-                                conn.commit()
-                                st.success(f"Added {w}!")
+                            c.execute("UPDATE vocab SET next_review = ?", (datetime.now().strftime('%Y-%m-%d'),))
+                            conn.commit(); conn.close(); st.rerun()
+                    with c2:
+                        if st.button("📦 Unlock More Oxford Words (B2-C1)"):
+                            conn = sqlite3.connect(DB_NAME)
+                            c = conn.cursor()
+                            now = datetime.now().strftime('%Y-%m-%d')
+                            added_count = 0
+                            # กรองคำที่ยังไม่มีใน DB
+                            c.execute("SELECT word FROM vocab")
+                            existing_words = [row[0] for row in c.fetchall()]
+                            
+                            for w in OXFORD_EXPANSION:
+                                if w[0] not in existing_words:
+                                    c.execute("INSERT INTO vocab (word, pos, pronunciation, translation, example, level, next_review) VALUES (?,?,?,?,?,?,?)",
+                                              (w[0], w[1], w[2], w[3], w[4], w[5], now))
+                                    added_count += 1
+                                    if added_count >= 10: break # เพิ่มทีละ 10 คำเพื่อไม่ให้เยอะเกินไป
+                            
+                            conn.commit()
+                            conn.close()
+                            if added_count > 0:
+                                st.success(f"Unlocked {added_count} new advanced words! Ready for training.")
                                 time.sleep(1)
                                 st.rerun()
-                            except: st.error("Word already exists in vault.")
-                            conn.close()
-            
-            conn = sqlite3.connect(DB_NAME)
-            df_v = pd.read_sql_query("SELECT id, word, pos, level, translation, mastery_score FROM vocab ORDER BY id DESC", conn)
-            conn.close()
-            st.dataframe(df_v, use_container_width=True, hide_index=True)
+                            else:
+                                st.info("You've unlocked all current words in the library!")
+        with tabs[2]:
+            # --- WORD VAULT TAB ---
+            with st.expander("➕ Add Custom Word"):
+                with st.form("add_word", clear_on_submit=True):
+                    c1, c2, c3 = st.columns(3)
+                    w = c1.text_input("Word"); pos = c2.selectbox("POS", ["n.", "v.", "adj.", "adv.", "phr."]); phonetic = c3.text_input("IPA /.../")
+                    t = st.text_input("Thai"); e = st.text_area("Example Sentence"); l = st.select_slider("CEFR", ["A1", "A2", "B1", "B2", "C1", "C2"], value="B2")
+                    if st.form_submit_button("Save"):
+                        conn = sqlite3.connect(DB_NAME); c = conn.cursor()
+                        try:
+                            c.execute("INSERT INTO vocab (word, pos, pronunciation, translation, example, level, next_review) VALUES (?,?,?,?,?,?,?)",
+                                      (w, pos, phonetic, t, e, l, datetime.now().strftime('%Y-%m-%d')))
+                            conn.commit(); st.success(f"Added {w}!"); time.sleep(1); st.rerun()
+                        except: st.error("Exists!")
+                        conn.close()
+            conn = sqlite3.connect(DB_NAME); df_v = pd.read_sql_query("SELECT word, pos, level, translation, mastery_score FROM vocab", conn); conn.close()
+            st.dataframe(df_v, use_container_width=True)
 
 if __name__ == "__main__":
     main()
