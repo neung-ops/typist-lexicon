@@ -32,8 +32,13 @@ def init_db():
     if c.fetchone()[0] == 0:
         starter_words = [
             ('Analyze', 'v.', '/ˈæn.əl.aɪz/', 'วิเคราะห์', 'We need to analyze the data.', 'B1'),
-            ('Implement', 'v.', '/ˈɪm.plɪ.ment/', 'นำมาใช้/ทำให้เกิดผล', 'The plan was difficult to implement.', 'B2'),
-            ('Ambiguous', 'adj.', '/æmˈbɪɡ.ju.əs/', 'กำกวม', 'His reply was ambiguous.', 'C1')
+            ('Implement', 'v.', '/ˈimpliˌment/', 'นำมาใช้/ทำให้เกิดผล', 'The plan was difficult to implement.', 'B2'),
+            ('Ambiguous', 'adj.', '/æmˈbɪɡ.ju.əs/', 'กำกวม', 'His reply was ambiguous.', 'C1'),
+            ('Pragmatic', 'adj.', '/præɡˈmæt.ɪk/', 'เน้นผลจริง/เชิงปฏิบัติ', 'A pragmatic approach to politics.', 'C1'),
+            ('Scrutinize', 'v.', '/ˈskruː.tɪ.naɪz/', 'พินิจพิจารณาอย่างถี่ถ้วน', 'Customers were warned to scrutinize the small print.', 'C1'),
+            ('Inherent', 'adj.', '/ɪnˈher.ənt/', 'ที่มีอยู่เป็นปกติวิสัย/โดยเนื้อแท้', 'There are risks inherent in almost every sport.', 'B2'),
+            ('Substantial', 'adj.', '/səbˈstæn.ʃəl/', 'มากมาย/สำคัญ', 'A substantial change in government policy.', 'B2'),
+            ('Mitigate', 'v.', '/ˈmɪt.ɪ.ɡeɪt/', 'บรรเทา/ทำให้เบาบางลง', 'It is unclear how to mitigate the effects of tourism.', 'C1')
         ]
         for w, p, pr, t, e, l in starter_words:
             c.execute("INSERT OR IGNORE INTO vocab (word, pos, pronunciation, translation, example, level, next_review) VALUES (?,?,?,?,?,?,?)",
@@ -160,7 +165,7 @@ with tabs[0]:
             quiz_word = st.session_state.session_words[st.session_state.quiz_idx]
             st.subheader(f"⚡ Final Challenge: What does '{quiz_word['word']}' mean?")
             
-            # ดึงคำแปลอื่นๆ มาเป็นตัวหลอก
+            # ดึงคำแปลอื่นๆ มาเป็นตัวหลอก (ตัวแก้ปัญหา "สุ่ม 2")
             c = conn.cursor()
             c.execute("SELECT translation FROM vocab WHERE word != ?", (quiz_word['word'],))
             all_others = [r[0] for r in c.fetchall()]
@@ -170,7 +175,7 @@ with tabs[0]:
             
             cols = st.columns(2)
             for i, opt in enumerate(options):
-                if cols[i%2].button(opt, key=f"opt_{i}", use_container_width=True):
+                if cols[i%2].button(opt, key=f"opt_{i}_{quiz_word['id']}", use_container_width=True):
                     if opt == quiz_word['translation']:
                         update_srs(quiz_word['id'], True)
                         st.session_state.quiz_idx += 1
@@ -191,7 +196,7 @@ with tabs[0]:
     else:
         st.success("🎉 All caught up for today!")
         if st.button("Unlock 5 New Advanced Words"):
-            # ตัวอย่างคลังศัพท์ B2-C1
+            # ตัวอย่างคลังศัพท์เพิ่มเติม
             advanced = [
                 ('Pragmatic', 'adj.', '/præɡˈmæt.ɪk/', 'เน้นผลจริง/เชิงปฏิบัติ', 'A pragmatic approach to politics.', 'C1'),
                 ('Scrutinize', 'v.', '/ˈskruː.tɪ.naɪz/', 'พินิจพิจารณาอย่างถี่ถ้วน', 'Customers were warned to scrutinize the small print.', 'C1'),
@@ -214,9 +219,7 @@ with tabs[1]:
     conn.close()
     
     if not df_v.empty:
-        # ป้องกันพังถ้าค่าเป็น None
         df_v['mastery_score'] = df_v['mastery_score'].fillna(0)
-        
         c1, c2, c3 = st.columns(3)
         c1.metric("Total Vocabulary", f"{len(df_v)} words")
         c2.metric("Knowledge Level", f"{int(df_v['mastery_score'].mean())}%")
@@ -227,7 +230,7 @@ with tabs[1]:
         st.plotly_chart(fig, use_container_width=True)
         
         st.write("### Knowledge Retention Status")
-        st.dataframe(df_v[['word', 'translation', 'mastery_score', 'next_review']].sort_values('mastery_score'), use_container_width=True)
+        st.dataframe(df_v[['word', 'translation', 'mastery_score', 'next_review']].sort_values('mastery_score', ascending=False), use_container_width=True)
     else:
         st.info("Start training to see your stats!")
 
@@ -253,6 +256,6 @@ with tabs[2]:
                     st.rerun()
 
     conn = sqlite3.connect(DB_NAME)
-    df_all = pd.read_sql_query("SELECT id, word, pos, translation, level FROM vocab", conn)
+    df_all = pd.read_sql_query("SELECT id, word, pos, translation, level, next_review FROM vocab", conn)
     conn.close()
     st.dataframe(df_all, use_container_width=True)
