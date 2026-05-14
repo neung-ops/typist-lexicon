@@ -1,232 +1,169 @@
 import streamlit as st
-import sqlite3
 import pandas as pd
+import sqlite3
 from datetime import datetime, timedelta
-import random
-import plotly.express as px
 import time
 
-# --- 1. DATABASE SETUP & MIGRATION ---
+# --- CONFIG & DATABASE ---
+DB_NAME = "vocab_vault.db"
+
 def init_db():
-    conn = sqlite3.connect('vocab_vault.db')
+    conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
-    
-    # Create table with new structure
-    c.execute('''CREATE TABLE IF NOT EXISTS vocabulary
-                 (id INTEGER PRIMARY KEY, 
+    # สร้างตารางพร้อมรองรับ Part of Speech และ Example
+    c.execute('''CREATE TABLE IF NOT EXISTS vocab 
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT, 
                   word TEXT UNIQUE, 
-                  translation TEXT, 
-                  level TEXT,
                   pos TEXT,
+                  translation TEXT, 
                   example TEXT,
-                  interval INTEGER DEFAULT 0, 
-                  easiness REAL DEFAULT 2.5,
-                  next_review DATE,
-                  status TEXT DEFAULT 'New')''')
+                  level TEXT, 
+                  interval INTEGER, 
+                  easiness REAL, 
+                  next_review TEXT,
+                  mastery_score INTEGER DEFAULT 0)''')
     
-    # Migration: Check if pos and example columns exist, if not add them
-    c.execute("PRAGMA table_info(vocabulary)")
+    # เช็คว่ามีคอลัมน์ใหม่หรือยัง (สำหรับ Migration)
+    c.execute("PRAGMA table_info(vocab)")
     columns = [column[1] for column in c.fetchall()]
     if 'pos' not in columns:
-        c.execute("ALTER TABLE vocabulary ADD COLUMN pos TEXT")
+        c.execute("ALTER TABLE vocab ADD COLUMN pos TEXT")
     if 'example' not in columns:
-        c.execute("ALTER TABLE vocabulary ADD COLUMN example TEXT")
+        c.execute("ALTER TABLE vocab ADD COLUMN example TEXT")
         
-    c.execute('''CREATE TABLE IF NOT EXISTS activity_log
-                 (id INTEGER PRIMARY KEY, 
-                  word_id INTEGER, 
-                  timestamp DATETIME, 
-                  is_correct INTEGER)''')
-    
-    # Pre-seed with more descriptive data
-    c.execute("SELECT count(*) FROM vocabulary")
+    # เพิ่มคำศัพท์เริ่มต้น (ถ้ายังไม่มี)
+    c.execute("SELECT COUNT(*) FROM vocab")
     if c.fetchone()[0] == 0:
         initial_words = [
-            ("Analyze", "วิเคราะห์", "B1", "v.", "We need to analyze the data before making a decision."),
-            ("Comprehensive", "ครอบคลุม", "C1", "adj.", "The training provided a comprehensive overview of the system."),
-            ("Implement", "นำไปปฏิบัติ", "B2", "v.", "The company decided to implement a new policy."),
-            ("Efficient", "ที่มีประสิทธิภาพ", "B1", "adj.", "The new process is much more efficient than the old one."),
-            ("Perspective", "มุมมอง", "B2", "n.", "Traveling gives you a different perspective on life."),
-            ("Consistent", "สม่ำเสมอ", "B2", "adj.", "Success comes from consistent effort over time.")
+            ('Analyze', 'v.', 'วิเคราะห์', 'We need to analyze the results of the experiment.', 'B1', 1, 2.5, datetime.now().strftime('%Y-%m-%d')),
+            ('Implement', 'v.', 'ทำให้เกิดผล, นำมาใช้', 'The company decided to implement a new policy.', 'B2', 1, 2.5, datetime.now().strftime('%Y-%m-%d')),
+            ('Comprehensive', 'adj.', 'ครอบคลุม', 'This is a comprehensive study of the market.', 'C1', 1, 2.5, datetime.now().strftime('%Y-%m-%d'))
         ]
-        for w, t, l, p, e in initial_words:
-            c.execute("INSERT INTO vocabulary (word, translation, level, pos, example, next_review) VALUES (?, ?, ?, ?, ?, ?)",
-                      (w, t, l, p, e, datetime.now().date()))
-    conn.commit()
-    return conn
-
-# --- 2. SRS LOGIC ---
-def update_srs(word_id, is_correct):
-    word_id = int(word_id)
-    conn = sqlite3.connect('vocab_vault.db')
-    c = conn.cursor()
-    c.execute("SELECT interval, easiness FROM vocabulary WHERE id = ?", (word_id,))
-    row = c.fetchone()
+        c.executemany("INSERT INTO vocab (word, pos, translation, example, level, interval, easiness, next_review) VALUES (?,?,?,?,?,?,?,?)", initial_words)
     
-    if row is None:
-        conn.close()
-        return
-
-    interval, easiness = row
-    if is_correct:
-        if interval == 0: new_interval = 1
-        elif interval == 1: new_interval = 3
-        else: new_interval = int(interval * easiness)
-        new_easiness = easiness + 0.1
-        status = 'Mastering' if new_interval > 14 else 'Learning'
-    else:
-        new_interval = 0
-        new_easiness = max(1.3, easiness - 0.2)
-        status = 'Relearning'
-
-    next_review = datetime.now().date() + timedelta(days=new_interval)
-    c.execute("UPDATE vocabulary SET interval=?, easiness=?, next_review=?, status=? WHERE id=?",
-              (new_interval, new_easiness, next_review, status, word_id))
     conn.commit()
     conn.close()
 
-# --- 3. UI STYLING ---
-st.set_page_config(page_title="Typist Lexicon Pro", layout="wide")
+def update_srs(word_id, success):
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("SELECT interval, easiness, mastery_score FROM vocab WHERE id = ?", (int(word_id),))
+    row = c.fetchone()
+    if not row: return
+    
+    interval, easiness, mastery = row
+    
+    if success:
+        # ระบบ SM-2 อย่างง่าย
+        if interval == 0: interval = 1
+        elif interval == 1: interval = 3
+        else: interval = int(interval * easiness)
+        mastery = min(100, mastery + 20)
+    else:
+        interval = 1 # พิมพ์ผิดให้กลับมาเริ่มใหม่พรุ่งนี้
+        easiness = max(1.3, easiness - 0.2)
+        mastery = max(0, mastery - 10)
+        
+    next_review = (datetime.now() + timedelta(days=interval)).strftime('%Y-%m-%d')
+    c.execute("UPDATE vocab SET interval = ?, easiness = ?, next_review = ?, mastery_score = ? WHERE id = ?", 
+              (interval, easiness, next_review, mastery, int(word_id)))
+    conn.commit()
+    conn.close()
+
+# --- MAIN APP ---
+st.set_page_config(page_title="Typist Lexicon v2", layout="wide")
+init_db()
+
+# Custom CSS สำหรับ UI ทันสมัย
 st.markdown("""
     <style>
-    .main { background-color: #0E1117; color: #E0E0E0; }
-    .stTextInput > div > div > input {
-        font-size: 28px; text-align: center; border-radius: 15px;
-        border: 2px solid #4F46E5; background-color: #1F2937; color: white;
-        padding: 10px;
-    }
-    .vocab-card {
-        background: linear-gradient(145deg, #1e293b, #0f172a);
-        padding: 40px; border-radius: 24px;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        text-align: center; margin-bottom: 25px;
-        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
-    }
-    .pos-tag {
-        display: inline-block; background: #4F46E5; color: white;
-        padding: 2px 12px; border-radius: 20px; font-size: 0.9rem;
-        margin-left: 10px; vertical-align: middle;
-    }
-    .thai-translation { color: #A855F7; font-size: 1.8rem; font-weight: bold; margin-top: 10px; }
-    .example-box {
-        margin-top: 25px; padding-top: 20px;
-        border-top: 1px solid rgba(255, 255, 255, 0.1);
-        font-style: italic; color: #94A3B8; font-size: 1.2rem;
-    }
-    .example-box b { color: #E2E8F0; }
+    .main { background-color: #0e1117; }
+    .stTextInput input { font-size: 2rem !important; text-align: center; border-radius: 15px; border: 2px solid #3e4452; }
+    .vocab-card { background: #1f2937; padding: 40px; border-radius: 20px; text-align: center; border: 1px solid #374151; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.5); }
+    .word-main { font-size: 5rem; font-weight: 800; color: #60a5fa; margin-bottom: 0px; }
+    .pos-tag { color: #9ca3af; font-style: italic; font-size: 1.2rem; }
+    .trans-main { font-size: 2rem; color: #f3f4f6; margin-top: 10px; }
+    .example-box { background: #111827; padding: 20px; border-radius: 10px; margin-top: 25px; color: #d1d5db; border-left: 5px solid #60a5fa; text-align: left; }
     </style>
-    """, unsafe_allow_html=True)
+""", unsafe_allow_image_ Wood=True)
 
-# --- 4. MAIN APP LOGIC ---
-def main():
-    conn = init_db()
-    st.title("⌨️ Typist Lexicon Pro")
-    st.markdown("Mastering Vocabulary in Context")
+tab1, tab2, tab3 = st.tabs(["🎯 Practice", "📊 Stats", "➕ Add Word"])
 
-    tab1, tab2, tab3 = st.tabs(["🚀 Practice Session", "📊 Progress Tracker", "📚 Knowledge Vault"])
+with tab1:
+    conn = sqlite3.connect(DB_NAME)
+    today = datetime.now().strftime('%Y-%m-%d')
+    # ดึงคำที่ต้องทบทวน
+    df_due = pd.read_sql_query("SELECT * FROM vocab WHERE next_review <= ?", conn, params=(today,))
+    conn.close()
 
-    with tab1:
-        today = datetime.now().date()
-        df_due = pd.read_sql_query(f"SELECT * FROM vocabulary WHERE next_review <= '{today}'", conn)
+    if not df_due.empty:
+        target = df_due.iloc[0]
         
-        if not df_due.empty:
-            # Shuffle slightly so we don't always get the same order in one session
-            target_word_row = df_due.iloc[0]
-            target_word = target_word_row['word']
-            
-            st.markdown(f"""
-                <div class="vocab-card">
-                    <p style='color: #94A3B8; margin:0;'>Level: {target_word_row['level']}</p>
-                    <h1 style='font-size: 4.5rem; margin: 10px 0;'>
-                        {target_word} <span class="pos-tag">{target_word_row['pos'] or ''}</span>
-                    </h1>
-                    <p class="thai-translation">{target_word_row['translation']}</p>
-                    <div class="example-box">
-                        " {target_word_row['example'] or 'No example provided.'} "
-                    </div>
+        # Display Card
+        st.markdown(f"""
+            <div class="vocab-card">
+                <div class="pos-tag">Level: {target['level']} | {target['pos']}</div>
+                <div class="word-main">{target['word']}</div>
+                <div class="trans-main">{target['translation']}</div>
+                <div class="example-box">
+                    <strong>Example:</strong><br>
+                    {target['example'] if target['example'] else 'No example provided.'}
                 </div>
-            """, unsafe_allow_html=True)
-
-            input_container = st.empty()
-            input_key = f"typing_input_{target_word_row['id']}"
-            user_input = input_container.text_input("Type the word correctly to master it", key=input_key)
-
-            if user_input:
-                if user_input.strip().lower() == target_word.lower():
-                    update_srs(target_word_row['id'], True)
-                    
-                    # Log activity
-                    c = conn.cursor()
-                    c.execute("INSERT INTO activity_log (word_id, timestamp, is_correct) VALUES (?, ?, ?)",
-                              (int(target_word_row['id']), datetime.now(), 1))
-                    conn.commit()
-                    
-                    st.toast(f"🎯 Perfect: {target_word}!")
-                    time.sleep(0.6)
-                    st.rerun() 
-                else:
-                    if len(user_input) >= len(target_word):
-                        st.error("❌ Almost there! Check your spelling.")
-                        update_srs(target_word_row['id'], False)
-        else:
-            st.info("🌈 Your brain is full for today! All words are reviewed. Add more in the Vault.")
-
-    with tab2:
-        st.header("Your Learning Analytics")
-        df_stats = pd.read_sql_query("SELECT status, count(*) as count FROM vocabulary GROUP BY status", conn)
+            </div>
+        """, unsafe_allow_image_ Wood=True)
         
-        col1, col2 = st.columns([2, 1])
-        with col1:
-            if not df_stats.empty:
-                fig = px.pie(df_stats, values='count', names='status', 
-                            title='Knowledge Mastery Level',
-                            color_discrete_sequence=px.colors.qualitative.Pastel)
-                st.plotly_chart(fig, use_container_width=True)
+        st.write("") # Spacer
+        
+        # Input Section
+        input_key = f"input_{target['id']}"
+        user_input = st.text_input("Type exactly to master this word:", key=input_key, placeholder="Type here...")
+
+        if user_input:
+            if user_input.strip().lower() == target['word'].lower():
+                update_srs(target['id'], True)
+                st.toast(f"✅ Amazing! '{target['word']}' updated.", icon='🚀')
+                time.sleep(0.6)
+                st.rerun()
             else:
-                st.write("No data yet.")
-            
-        with col2:
-            total_words = pd.read_sql_query("SELECT count(*) as total FROM vocabulary", conn).iloc[0]['total']
-            st.metric("Total Words Mastered", total_words)
-            st.write("Keep the streak alive to move words from 'New' to 'Mastering'!")
+                if len(user_input) >= len(target['word']):
+                    st.error("Oops! Try again.")
+                    update_srs(target['id'], False)
+    else:
+        st.balloons()
+        st.success("All caught up! You've mastered all words for today.")
 
-    with tab3:
-        st.header("Vocabulary Management")
-        with st.expander("➕ Add New English Word"):
-            c1, c2, c3 = st.columns([3, 2, 1])
-            new_word = c1.text_input("Word (English)")
-            new_pos = c2.selectbox("Type", ["n.", "v.", "adj.", "adv.", "phr."])
-            new_level = c3.selectbox("Level", ["A1", "A2", "B1", "B2", "C1", "C2"])
-            
-            new_trans = st.text_input("Thai Translation")
-            new_ex = st.text_area("Example Sentence", placeholder="How is this word used in a sentence?")
-            
-            if st.button("Save to My Vault"):
-                if new_word and new_trans:
-                    try:
-                        c = conn.cursor()
-                        c.execute("""INSERT INTO vocabulary 
-                                   (word, translation, level, pos, example, next_review) 
-                                   VALUES (?, ?, ?, ?, ?, ?)""",
-                                  (new_word, new_trans, new_level, new_pos, new_ex, datetime.now().date()))
-                        conn.commit()
-                        st.success(f"Successfully added '{new_word}'")
-                        st.rerun()
-                    except:
-                        st.warning("This word already exists in your vault.")
+with tab2:
+    st.header("Your Progress Dashboard")
+    conn = sqlite3.connect(DB_NAME)
+    df_all = pd.read_sql_query("SELECT * FROM vocab", conn)
+    conn.close()
+    
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Total Words", len(df_all))
+    col2.metric("Avg. Mastery", f"{int(df_all['mastery_score'].mean())}%")
+    col3.metric("Due Today", len(df_due))
+    
+    st.subheader("Vocabulary List")
+    st.dataframe(df_all[['word', 'pos', 'level', 'translation', 'mastery_score', 'next_review']], use_container_width=True)
+
+with tab3:
+    st.header("Add New Vocabulary")
+    with st.form("add_form", clear_on_submit=True):
+        new_word = st.text_input("Word")
+        new_pos = st.selectbox("Type", ["n.", "v.", "adj.", "adv.", "phr."])
+        new_trans = st.text_input("Thai Translation")
+        new_example = st.text_area("Example Sentence")
+        new_level = st.select_slider("Level", options=["A1", "A2", "B1", "B2", "C1", "C2"], value="B1")
         
-        df_vault = pd.read_sql_query("SELECT word, pos, translation, level, status, next_review FROM vocabulary", conn)
-        st.dataframe(df_vault, use_container_width=True)
-
-if __name__ == "__main__":
-    main()
-```
-eof
-
-### มีอะไรใหม่ในเวอร์ชันนี้?
-1.  **Part of Speech (POS):** เวลาพิมพ์คุณจะเห็นเลยว่าคำนี้ทำหน้าที่อะไร (n., v., adj.) ช่วยให้คุณไม่สับสนเวลาเอาไปใช้จริง
-2.  **Example Sentences:** เพิ่มกล่อง "Example Box" ด้านล่างของคำศัพท์ เพื่อให้คุณได้อ่านประโยคไปพร้อมๆ กับตอนฝึกพิมพ์
-3.  **Better Layout:** ขยายขนาดตัวอักษรของคำศัพท์หลักให้ใหญ่ขึ้น (4.5rem) เพื่อให้โฟกัสที่ตัวสะกดได้ชัดเจน
-4.  **Database Auto-update:** คุณไม่ต้องลบไฟล์ `.db` เดิมทิ้งครับ ผมเขียนโค้ด `Migration` ไว้ให้แล้ว มันจะเพิ่มคอลัมน์ `pos` และ `example` ให้เองโดยอัตโนมัติ
-
-**คำแนะนำ:** เวลาคุณเพิ่มคำศัพท์เองในหน้า "Knowledge Vault" พยายามหาประโยคตัวอย่างที่คุณ "อิน" หรือต้องใช้บ่อยๆ ในงานมาใส่ครับ Muscle Memory จะทำงานได้ดีขึ้น 2 เท่าถ้ามีความหมายที่เชื่อมโยงกับชีวิตจริงครับ! ลองใช้งานดูนะครับ!
+        if st.form_submit_button("Save to Vault"):
+            if new_word and new_trans:
+                conn = sqlite3.connect(DB_NAME)
+                c = conn.cursor()
+                try:
+                    c.execute("INSERT INTO vocab (word, pos, translation, example, level, interval, easiness, next_review) VALUES (?,?,?,?,?,?,?,?)",
+                              (new_word, new_pos, new_trans, new_example, new_level, 1, 2.5, datetime.now().strftime('%Y-%m-%d')))
+                    conn.commit()
+                    st.success(f"Added {new_word}!")
+                except:
+                    st.error("This word already exists.")
+                conn.close()
