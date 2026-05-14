@@ -47,10 +47,18 @@ def init_db():
 
 # --- 2. SRS LOGIC (SM-2 Simplified) ---
 def update_srs(word_id, is_correct):
+    # แปลง word_id เป็น int มาตรฐานของ python เพื่อป้องกัน error กับ sqlite
+    word_id = int(word_id)
     conn = sqlite3.connect('vocab_vault.db')
     c = conn.cursor()
     c.execute("SELECT interval, easiness FROM vocabulary WHERE id = ?", (word_id,))
-    interval, easiness = c.fetchone()
+    row = c.fetchone()
+    
+    if row is None:
+        conn.close()
+        return
+
+    interval, easiness = row
 
     if is_correct:
         if interval == 0:
@@ -116,22 +124,24 @@ def main():
                 </div>
             """, unsafe_allow_html=True)
 
-            # Input area
-            placeholder = "Type the word exactly to continue..."
-            user_input = st.text_input(placeholder, key="typing_area", value="")
+            # Input area with auto-clear logic
+            user_input = st.text_input("Type the word exactly to continue...", key="typing_area")
 
             if user_input:
                 if user_input.strip().lower() == target_word.lower():
-                    st.balloons()
-                    st.success("Correct! Muscle memory engaged.")
                     update_srs(target_word_row['id'], True)
+                    
                     # Log activity
                     c = conn.cursor()
                     c.execute("INSERT INTO activity_log (word_id, timestamp, is_correct) VALUES (?, ?, ?)",
                               (int(target_word_row['id']), datetime.now(), 1))
                     conn.commit()
-                    st.button("Next Word ➡️")
+                    
+                    st.toast("Correct! Muscle memory engaged. 🎯")
+                    time.sleep(0.5) # ให้เวลาคนดูความสำเร็จแป๊บนึง
+                    st.rerun() # รีเฟรชเพื่อไปคำถัดไปทันที
                 else:
+                    # ถ้าพิมพ์จนครบความยาวแล้วยังผิด
                     if len(user_input) >= len(target_word):
                         st.error("Incorrect. Try again!")
                         update_srs(target_word_row['id'], False)
