@@ -5,7 +5,6 @@ from datetime import datetime, timedelta
 import time
 import plotly.express as px
 
-# --- CONFIG & DATABASE ---
 DB_NAME = "vocab_vault_v2.db"
 
 def init_db():
@@ -24,7 +23,7 @@ def init_db():
                   next_review TEXT,
                   mastery_score INTEGER DEFAULT 0)''')
     
-    # เพิ่มข้อมูลเริ่มต้นถ้ายังไม่มี
+    # เช็คและเพิ่มข้อมูลเริ่มต้น
     c.execute("SELECT COUNT(*) FROM vocab")
     if c.fetchone()[0] == 0:
         initial_words = [
@@ -65,19 +64,14 @@ def update_srs(word_id, success):
     conn.commit()
     conn.close()
 
-# --- UI SETTINGS ---
 st.set_page_config(page_title="Typist Lexicon Pro", layout="wide", initial_sidebar_state="collapsed")
 
-# Custom CSS สำหรับ Dark Theme ทันสมัย
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;800&display=swap');
-    
     * { font-family: 'Inter', sans-serif; }
-    
     .stApp { background-color: #0B0E14; }
     
-    /* Card Container */
     .vocab-card {
         background: linear-gradient(145deg, #1A1F2B, #12161F);
         padding: 50px;
@@ -108,17 +102,8 @@ st.markdown("""
         margin-bottom: 15px;
     }
 
-    .level-tag {
-        color: #94A3B8;
-        font-size: 0.9rem;
-        margin-bottom: 10px;
-    }
-    
-    .trans-main {
-        font-size: 1.8rem;
-        color: #E2E8F0;
-        margin-bottom: 30px;
-    }
+    .level-tag { color: #94A3B8; font-size: 0.9rem; margin-bottom: 10px; }
+    .trans-main { font-size: 1.8rem; color: #E2E8F0; margin-bottom: 30px; }
     
     .example-box {
         background: rgba(0,0,0,0.2);
@@ -132,7 +117,6 @@ st.markdown("""
         line-height: 1.6;
     }
     
-    /* Input Styling */
     .stTextInput input {
         background-color: #1A1F2B !important;
         color: white !important;
@@ -153,35 +137,28 @@ st.markdown("""
 
 def main():
     init_db()
-    
     st.title("⌨️ Typist Lexicon Pro")
-    
-    tabs = st.tabs(["🚀 Practice Session", "📈 My Progress", "📂 Knowledge Vault"])
+    tabs = st.tabs(["🚀 Practice", "📈 Progress", "📂 Vault"])
     
     with tabs[0]:
         conn = sqlite3.connect(DB_NAME)
         today = datetime.now().strftime('%Y-%m-%d')
-        # ดึงคำที่ถึงกำหนด หรือคำที่ยังไม่เคยเรียน (interval=0)
+        # ดึงคำที่ถึงกำหนด หรือคำที่ยังไม่เคยเรียน
         df_due = pd.read_sql_query("SELECT * FROM vocab WHERE next_review <= ? OR interval = 0 ORDER BY interval DESC", conn, params=(today,))
         conn.close()
 
         if not df_due.empty:
             target = df_due.iloc[0]
-            
-            # บัตรคำศัพท์
             st.markdown(f"""
                 <div class="vocab-card">
                     <div class="level-tag">CEFR LEVEL: {target['level']}</div>
                     <div class="pos-tag">{target['pos']}</div>
                     <h1 class="word-main">{target['word']}</h1>
                     <div class="trans-main">{target['translation']}</div>
-                    <div class="example-box">
-                        “{target['example']}”
-                    </div>
+                    <div class="example-box">“{target['example']}”</div>
                 </div>
             """, unsafe_allow_html=True)
             
-            # ช่องพิมพ์
             input_key = f"q_{target['id']}"
             user_input = st.text_input("Type the word correctly to continue", key=input_key, placeholder="...")
 
@@ -192,13 +169,12 @@ def main():
                     time.sleep(0.5)
                     st.rerun()
                 else:
-                    # ถ้าพิมพ์จนจบความยาวแล้วยังผิด
                     if len(user_input) >= len(target['word']):
                         st.error("Keep trying! Focus on each letter.")
                         update_srs(target['id'], False)
         else:
             st.balloons()
-            st.markdown("<div style='text-align:center; padding:50px;'><h1>🌈 All Done!</h1><p>You've cleared your list for today. Add more words in the Vault!</p></div>", unsafe_allow_html=True)
+            st.markdown("<div style='text-align:center; padding:50px;'><h1>🌈 All Done!</h1><p>You've cleared your list for today.</p></div>", unsafe_allow_html=True)
 
     with tabs[1]:
         st.header("Learning Analytics")
@@ -209,10 +185,9 @@ def main():
         if not df_stats.empty:
             m1, m2, m3 = st.columns(3)
             m1.metric("Total Vocabulary", len(df_stats))
-            m2.metric("Avg. Mastery Score", f"{int(df_stats['mastery_score'].mean())}%")
+            m2.metric("Avg. Mastery", f"{int(df_stats['mastery_score'].mean())}%")
             m3.metric("Due for Review", len(df_due))
             
-            # กราฟแสดงระดับ Mastery
             fig = px.bar(df_stats, x="word", y="mastery_score", color="mastery_score", 
                          title="Mastery Level by Word", color_continuous_scale="Viridis")
             fig.update_layout(template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
@@ -222,17 +197,14 @@ def main():
 
     with tabs[2]:
         st.header("Vault Management")
-        
-        with st.expander("➕ Add New Word to your Bank"):
+        with st.expander("➕ Add New Word"):
             with st.form("new_word_form", clear_on_submit=True):
                 col1, col2, col3 = st.columns([3, 1, 1])
                 word = col1.text_input("English Word")
                 pos = col2.selectbox("Type", ["n.", "v.", "adj.", "adv.", "phr."])
                 level = col3.selectbox("Level", ["A1", "A2", "B1", "B2", "C1", "C2"])
-                
                 trans = st.text_input("Thai Translation")
                 ex = st.text_area("Usage Example Sentence")
-                
                 if st.form_submit_button("Add to My Collection"):
                     if word and trans:
                         try:
@@ -242,14 +214,10 @@ def main():
                                       (word, pos, trans, ex, level, datetime.now().strftime('%Y-%m-%d')))
                             conn.commit()
                             conn.close()
-                            st.success(f"Added '{word}' to your vault!")
+                            st.success(f"Added '{word}'!")
                             st.rerun()
-                        except:
-                            st.error("This word already exists.")
-                    else:
-                        st.warning("Please fill in the word and translation.")
+                        except: st.error("This word already exists.")
         
-        # แสดงรายการคำศัพท์ทั้งหมด
         conn = sqlite3.connect(DB_NAME)
         df_vault = pd.read_sql_query("SELECT word, pos, translation, level, mastery_score, next_review FROM vocab", conn)
         conn.close()
@@ -257,13 +225,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-```
-
-### สิ่งที่ปรับปรุงในเวอร์ชัน "ตั้งใจทำ" นี้:
-1.  **Fixed Syntax Error:** แก้ไขคำที่ผิดพลาดในส่วน `st.markdown` เรียบร้อยครับ
-2.  **Ultra-Modern UI:** ผมใส่ CSS แบบ Custom เพื่อให้ได้ Dark Mode ที่มี Gradient และ Drop Shadow สวยงาม ตัวอักษรคำศัพท์ใหญ่และอ่านง่าย เหมาะกับการฝึกพิมพ์สัมผัส
-3.  **Context-Rich:** ทุกคำจะมี **CEFR Level**, **Part of Speech**, และ **Example Sentence** แสดงผลเด่นชัดเพื่อให้คุณเห็นวิธีใช้งานจริง
-4.  **Robust SRS:** ปรับตรรกะการวนซ้ำ ถ้าพิมพ์ผิด คะแนน Mastery จะลดลงและคำนั้นจะวนกลับมาเร็วขึ้น แต่ถ้าพิมพ์ถูกต่อเนื่อง คะแนนจะพุ่งขึ้นและระยะเวลาทบทวนจะห่างออกไปเรื่อยๆ จน "เนียนจากไป" ตามที่คุณต้องการ
-5.  **Interactive Stats:** เพิ่มกราฟจาก Plotly เพื่อให้คุณเห็น Progress ของแต่ละคำเป็นแท่งคะแนนความเชี่ยวชาญ
-
-ลองรันตัวนี้ดูนะครับ ผมมั่นใจว่าคราวนี้จะไม่มี Error และตอบโจทย์การเรียนรู้ของคุณได้ดีที่สุดครับ!
