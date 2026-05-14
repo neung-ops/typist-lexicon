@@ -4,7 +4,11 @@ import sqlite3
 from datetime import datetime, timedelta
 import time
 import random
-# --- STREAMING_CHUNK:Expanding Library with Advanced Vocabulary... ---
+
+# --- STREAMING_CHUNK:Configuring Global Constants... ---
+DB_NAME = "vocab_vault_v6.db"
+
+# คลังคำศัพท์ Oxford/Advanced (B2-C1) สำหรับการขยายคลัง
 OXFORD_EXPANSION = [
     ('Ambiguous', 'adj.', '/æmˈbɪɡ.ju.əs/', 'กำกวม/ไม่ชัดเจน', 'His reply to my question was somewhat ambiguous.', 'B2'),
     ('Coherent', 'adj.', '/koʊˈhɪr.ənt/', 'สอดคล้องกัน/เชื่อมโยงกัน', 'The government lacks a coherent economic policy.', 'B2'),
@@ -25,9 +29,10 @@ OXFORD_EXPANSION = [
     ('Elaborate', 'v.', '/iˈlæb.ə.reɪt/', 'ขยายความ/ทำอย่างละเอียด', 'Could you elaborate on your main point?', 'B2'),
     ('Conspicuous', 'adj.', '/kənˈspɪk.ju.əs/', 'เด่นชัด/สะดุดตา', 'He was conspicuous by his absence.', 'C1'),
     ('Advocate', 'v.', '/ˈæd.və.keɪt/', 'สนับสนุน/เป็นกระบอกเสียง', 'She advocates for higher taxes on the wealthy.', 'B2'),
-    ('Ambivalent', 'adj.', '/æmˈbɪv.ə.lənt/', 'มีความรู้สึกสองจิตสองใจ', 'I am ambivalent about my new job.', 'C1')
+    ('Ambivalent', 'adj.', '/amˈbɪv.ə.lənt/', 'มีความรู้สึกสองจิตสองใจ', 'I am ambivalent about my new job.', 'C1')
 ]
 
+# --- STREAMING_CHUNK:Initializing Session States... ---
 if 'session_queue' not in st.session_state:
     st.session_state.session_queue = [] 
 if 'quiz_phase' not in st.session_state:
@@ -39,6 +44,7 @@ if 'current_options' not in st.session_state:
 if 'input_focus_trigger' not in st.session_state:
     st.session_state.input_focus_trigger = 0
 
+# --- STREAMING_CHUNK:Handling Database Logic... ---
 def init_db():
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
@@ -62,7 +68,6 @@ def init_db():
     conn.commit()
     conn.close()
 
-# --- STREAMING_CHUNK:Handling SRS and Word Management... ---
 def update_srs(word_id, success):
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
@@ -147,15 +152,19 @@ st.markdown("""
 
     <script>
     function forceFocus() {
+        // ค้นหา input ล่าสุดในหน้าเว็บ (Streamlit มักจะเอา input ไว้ท้ายๆ)
         const inputs = window.parent.document.querySelectorAll('input');
         if (inputs.length > 0) {
             const currentInput = inputs[inputs.length - 1];
+            // ปิด autocomplete บราวเซอร์
             currentInput.setAttribute('autocomplete', 'off');
+            // ถ้า focus หลุด ให้ดึงกลับมา
             if (window.parent.document.activeElement !== currentInput) {
                 currentInput.focus();
             }
         }
     }
+    // สั่งให้ทำงานทุก 500ms (0.5 วินาที)
     setInterval(forceFocus, 500);
     </script>
 """, unsafe_allow_html=True)
@@ -194,6 +203,7 @@ def main():
                         st.session_state.current_options = []
                         if st.session_state.quiz_index >= len(st.session_state.session_queue):
                             st.balloons()
+                            # บันทึกคะแนนลง DB จริงๆ เมื่อจบเซสชั่น
                             for w in st.session_state.session_queue: update_srs(w['id'], True)
                             st.toast("🎉 Session Mastered!")
                             st.session_state.quiz_phase = False
@@ -205,7 +215,7 @@ def main():
                             st.rerun()
                     else:
                         st.error("Wrong Meaning! Retrying...")
-                        update_srs(current_word_data['id'], False)
+                        update_srs(current_word_data['id'], False) # พลาดในควิซก็นับว่าพลาด
                         st.session_state.quiz_phase = False
                         st.session_state.session_queue = []
                         st.session_state.quiz_index = 0
@@ -218,6 +228,7 @@ def main():
         with tabs[0]:
             conn = sqlite3.connect(DB_NAME)
             today = datetime.now().strftime('%Y-%m-%d')
+            # ดึงคำที่ต้องทบทวนแต่ไม่อยู่ในคิวที่พิมพ์เสร็จแล้ว
             finished_ids = [str(w['id']) for w in st.session_state.session_queue]
             
             query = f"SELECT * FROM vocab WHERE next_review <= ?"
@@ -240,6 +251,7 @@ def main():
                     </div>
                 """, unsafe_allow_html=True)
                 
+                # ใช้ trigger เพื่อเปลี่ยน key ให้ช่องว่างเสมอหลังจากกด Enter
                 input_key = f"type_box_{target['id']}_{st.session_state.input_focus_trigger}"
                 typed_word = st.text_input("Type correctly:", key=input_key, placeholder="Type and hit Enter...").strip()
 
@@ -248,6 +260,7 @@ def main():
                         st.session_state.session_queue.append(target.to_dict())
                         st.session_state.input_focus_trigger += 1 
                         st.toast(f"✅ Correct: {target['word']}")
+                        # ครบ 3 คำตัดเข้าควิซ
                         if len(st.session_state.session_queue) >= 3:
                             st.session_state.quiz_phase = True
                         time.sleep(0.3)
@@ -256,6 +269,7 @@ def main():
                         if len(typed_word) >= len(target['word']):
                             st.error("Typos! Concentrate on each letter.")
             else:
+                # ถ้าไม่มีคำค้างในตาราง แต่มีในคิวรอควิซ
                 if st.session_state.session_queue:
                     st.session_state.quiz_phase = True
                     st.rerun()
@@ -293,6 +307,18 @@ def main():
                                 st.rerun()
                             else:
                                 st.info("You've unlocked all current words in the library!")
+        
+        with tabs[1]:
+            # --- ANALYTICS TAB ---
+            conn = sqlite3.connect(DB_NAME)
+            df_v = pd.read_sql_query("SELECT * FROM vocab", conn)
+            conn.close()
+            st.subheader("Your Mastery Level")
+            if not df_v.empty:
+                st.progress(int(df_v['mastery_score'].mean()))
+                st.write(f"Average Knowledge: {int(df_v['mastery_score'].mean())}%")
+                st.dataframe(df_v[['word', 'level', 'mastery_score', 'next_review']].sort_values('mastery_score', ascending=False), use_container_width=True)
+
         with tabs[2]:
             # --- WORD VAULT TAB ---
             with st.expander("➕ Add Custom Word"):
